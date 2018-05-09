@@ -73,11 +73,6 @@ func Run(s *options.MySQLOperatorServer) error {
 	kubeClient := kubernetes.NewForConfigOrDie(kubeconfig)
 	mysqlopClient := mysqlop.NewForConfigOrDie(kubeconfig)
 
-	serverVersion, err := kubeClient.Discovery().ServerVersion()
-	if err != nil {
-		glog.Fatalf("Failed to discover Kubernetes API server version: %v", err)
-	}
-
 	// Shared informers (non namespace specific).
 	operatorInformerFactory := informers.NewFilteredSharedInformerFactory(mysqlopClient, resyncPeriod(s)(), s.Namespace, nil)
 	kubeInformerFactory := kubeinformers.NewFilteredSharedInformerFactory(kubeClient, resyncPeriod(s)(), s.Namespace, nil)
@@ -88,7 +83,6 @@ func Run(s *options.MySQLOperatorServer) error {
 		*s,
 		mysqlopClient,
 		kubeClient,
-		serverVersion,
 		operatorInformerFactory.Mysql().V1().MySQLClusters(),
 		kubeInformerFactory.Apps().V1beta1().StatefulSets(),
 		kubeInformerFactory.Core().V1().Pods(),

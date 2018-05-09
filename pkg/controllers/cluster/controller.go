@@ -17,7 +17,6 @@ package cluster
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	apps "k8s.io/api/apps/v1beta1"
@@ -27,7 +26,6 @@ import (
 	labels "k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	wait "k8s.io/apimachinery/pkg/util/wait"
-	version "k8s.io/apimachinery/pkg/version"
 	appsinformers "k8s.io/client-go/informers/apps/v1beta1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	kubernetes "k8s.io/client-go/kubernetes"
@@ -131,10 +129,6 @@ type MySQLController struct {
 	// secretControl enables control of Services associated with MySQLClusters.
 	secretControl SecretControlInterface
 
-	// apiServerVersion holds version information about the Kubernetes API
-	// server of the current cluster.
-	apiServerVersion *version.Info
-
 	// recorder is an event recorder for recording Event resources to the
 	// Kubernetes API.
 	recorder record.EventRecorder
@@ -157,7 +151,6 @@ func NewController(
 	opConfig options.MySQLOperatorServer,
 	opClient mysqlop.Interface,
 	kubeClient kubernetes.Interface,
-	apiServerVersion *version.Info,
 	clusterInformer opinformers.MySQLClusterInformer,
 	statefulSetInformer appsinformers.StatefulSetInformer,
 	podInformer coreinformers.PodInformer,
@@ -199,9 +192,8 @@ func NewController(
 
 		secretControl: NewRealSecretControl(kubeClient),
 
-		queue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "mysqlcluster"),
-		apiServerVersion: apiServerVersion,
-		recorder:         recorder,
+		queue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "mysqlcluster"),
+		recorder: recorder,
 	}
 
 	clusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -210,14 +202,6 @@ func NewController(
 			m.enqueueCluster(new)
 		},
 		DeleteFunc: func(obj interface{}) {
-			major, _ := strconv.Atoi(m.apiServerVersion.Major)
-			minor, _ := strconv.Atoi(m.apiServerVersion.Minor)
-			if major <= 1 && minor <= 7 {
-				if err := m.deleteClusterResources(obj); err != nil {
-					utilruntime.HandleError(fmt.Errorf("Failed to delete cluster resources: %v", err))
-				}
-			}
-
 			cluster, ok := obj.(*api.MySQLCluster)
 			if ok {
 				m.onClusterDeleted(cluster.Name)
@@ -522,82 +506,6 @@ func (m *MySQLController) updateClusterStatus(cluster *api.MySQLCluster, ss *app
 			return fmt.Errorf("failed to update cluster status: %v", err)
 		}
 	}
-
-	return nil
-}
-
-// deleteClusterResources manually issues a delete for the dependant resources
-// of a MySQLCluster.
-// DEPRECIATED: Not required after Kubernetes 1.8. Remove when dropping support
-// for 1.7.
-func (m *MySQLController) deleteClusterResources(obj interface{}) error {
-	cluster, ok := obj.(*api.MySQLCluster)
-	if !ok {
-		d, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			return fmt.Errorf("deleteClusterResources() received unexpected type %T", obj)
-		}
-		// We don't care about the object being stale. We want to ensure that
-		// its dependant resources are absent anyway.
-		cluster = d.Obj.(*api.MySQLCluster)
-	}
-
-	if cluster.RequiresSecret() {
-		glog.V(4).Infof("Ensuring Secret deleted for MySQLCLuster %s/%s", cluster.Namespace, cluster.Name)
-		s, err := m.secretControl.GetForCluster(cluster)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return err
-			}
-		} else if metav1.IsControlledBy(s, cluster) {
-			if err := m.secretControl.DeleteSecret(s); err != nil {
-				return err
-			}
-		}
-	}
-
-	// TODO(apryde): This needs to be modified to check for user-defined my.cnf
-	// ConfigMap as by default one is no longer created.
-	glog.V(4).Infof("Ensuring my.cnf ConfigMap deleted for MySQLCLuster %s/%s", cluster.Namespace, cluster.Name)
-	mycnf, err := m.configMapLister.ConfigMaps(cluster.Namespace).Get(cluster.Name)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-	} else if metav1.IsControlledBy(mycnf, cluster) {
-		if err := m.configControl.DeleteConfigMap(mycnf); err != nil {
-			return err
-		}
-	}
-
-	glog.V(4).Infof("Ensuring Service deleted for MySQLCLuster %s/%s", cluster.Namespace, cluster.Name)
-	svcName := cluster.Name
-	svc, err := m.serviceLister.Services(cluster.Namespace).Get(svcName)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-	} else if metav1.IsControlledBy(svc, cluster) {
-		if err := m.serviceControl.DeleteService(svc); err != nil {
-			return err
-		}
-	}
-
-	// Ensure the cluster's StatefulSet does not exist.
-	glog.V(4).Infof("Ensuring StatefulSet deleted for MySQLCLuster %s/%s", cluster.Namespace, cluster.Name)
-	statefulSetName := cluster.Name
-	ss, err := m.statefulSetLister.StatefulSets(cluster.Namespace).Get(statefulSetName)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-	} else if metav1.IsControlledBy(ss, cluster) {
-		if err := m.statefulSetControl.DeleteStatefulSet(ss); err != nil {
-			return err
-		}
-	}
-
-	glog.V(4).Infof("Ensured all components of MySQLCLuster %s/%s deleted", cluster.Namespace, cluster.Name)
 
 	return nil
 }

@@ -30,8 +30,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	cache "k8s.io/client-go/tools/cache"
 
-	"github.com/golang/glog"
-
 	options "github.com/oracle/mysql-operator/cmd/mysql-operator/app/options"
 	api "github.com/oracle/mysql-operator/pkg/apis/mysql/v1"
 	"github.com/oracle/mysql-operator/pkg/constants"
@@ -510,11 +508,6 @@ func newFakeMySQLController(cluster *api.MySQLCluster, kuberesources ...runtime.
 	mysqlopClient := mysqlfake.NewSimpleClientset(cluster)
 	kubeClient := fake.NewSimpleClientset(kuberesources...)
 
-	serverVersion, err := kubeClient.Discovery().ServerVersion()
-	if err != nil {
-		glog.Fatalf("Failed to discover Kubernetes API server version: %+v", err)
-	}
-
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, util.NoResyncPeriodFunc())
 	mysqlopInformerFactory := mysqlinformer_factory.NewSharedInformerFactory(mysqlopClient, util.NoResyncPeriodFunc())
 
@@ -530,7 +523,6 @@ func newFakeMySQLController(cluster *api.MySQLCluster, kuberesources ...runtime.
 		mockOperatorConfig(),
 		mysqlopClient,
 		kubeClient,
-		serverVersion,
 		fakeInformers.clusterInformer,
 		fakeInformers.statefulSetInformer,
 		fakeInformers.podInformer,
