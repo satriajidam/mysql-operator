@@ -102,10 +102,11 @@ func getClusterStatusFromGroupSeeds(ctx context.Context, kubeclient kubernetes.I
 		}
 		if i == 0 || podExists(kubeclient, inst) {
 			msh := mysqlsh.New(utilexec.New(), inst.GetShellURI())
-			if !msh.IsClustered(ctx) {
+			status, err := msh.GetClusterStatus(ctx)
+			if err != nil {
 				continue
 			}
-			return msh.GetClusterStatus(ctx)
+			return status, nil
 		}
 	}
 
