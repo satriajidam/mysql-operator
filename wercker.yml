@@ -1,5 +1,5 @@
 box: golang:1.9
-no-response-timeout: 10
+no-response-timeout: 45
 
 test:
   base-path: "/go/src/github.com/oracle/mysql-operator"

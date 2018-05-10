@@ -96,17 +96,11 @@ func (testDB *TestDB) install() {
 	password := GetMySQLPassword(testDB.t, podname, testDB.cluster.Namespace)
 	executor := NewKubectlSimpleSQLExecutor(testDB.t, podname, username, password, testDB.cluster.Namespace)
 
-	testDB.t.Logf("Installing git")
-	output, err := executor.ExecuteCMD("yum install -y git")
-	if err != nil {
-		testDB.t.Fatalf("Failed to install git:%s", output)
-	}
-
-	testDB.t.Logf("Cloning testdb")
-	err = Retry(NewDefaultRetyWithDuration(25*time.Second), func() (bool, error) {
-		output, err = executor.ExecuteCMD("git clone https://github.com/datacharmer/test_db.git")
+	testDB.t.Logf("Downloading testdb")
+	err := Retry(NewDefaultRetyWithDuration(25*time.Second), func() (bool, error) {
+		output, err := executor.ExecuteCMD("curl -L -o testdb.zip https://github.com/datacharmer/test_db/archive/master.zip && (echo \"import zipfile\"; echo \"zipfile.ZipFile('testdb.zip').extractall()\")|python && mv test_db-master test_db")
 		if err != nil {
-			testDB.t.Logf("failed to clone test db, retrying ...")
+			testDB.t.Logf("failed to download test db, retrying ...")
 			testDB.t.Logf("    output: %s", output)
 			testDB.t.Logf("    err: %v", err)
 			return false, nil
@@ -114,7 +108,7 @@ func (testDB *TestDB) install() {
 		return true, nil
 	})
 	if err != nil {
-		testDB.t.Fatalf("Failed to clone test db")
+		testDB.t.Fatalf("Failed to download test db")
 	}
 }
 
